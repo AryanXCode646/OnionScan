@@ -148,7 +148,20 @@ type targetSummary struct {
 }
 
 func (s *Server) handleGetTargets(w http.ResponseWriter, r *http.Request) {
-	targetList, err := s.Store.Targets()
+	page, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+
+	// Count total targets (single COUNT(*) query — no full scan load)
+	total, err := s.Store.CountTargets()
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
+		return
+	}
+
+	// Retrieve only the requested page of target addresses (SQL LIMIT/OFFSET)
+	targetList, err := s.Store.TargetsPage(page.Limit, page.Offset)
 	if err != nil {
 		writeJSONError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
 		return
@@ -174,11 +187,18 @@ func (s *Server) handleGetTargets(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	if summaries == nil {
+		summaries = []targetSummary{}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"targets": summaries,
-		"total":   len(summaries),
+		"total":   total,
+		"limit":   page.Limit,
+		"offset":  page.Offset,
 	})
 }
+
 
 type scanRequest struct {
 	Target string         `json:"target"`
@@ -541,52 +561,43 @@ func (s *Server) handleGetScan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetFindings(w http.ResponseWriter, r *http.Request) {
+	page, ok := parsePagination(w, r)
+	if !ok {
+		return
+	}
+
 	target := r.URL.Query().Get("target")
 	severityFilter := strings.ToUpper(r.URL.Query().Get("severity"))
 	analyzerFilter := strings.ToLower(r.URL.Query().Get("analyzer"))
 
-	var allFindings []model.Finding
-
-	if target != "" {
-		latest, ok, err := s.Store.Latest(target)
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
-			return
-		}
-		if ok {
-			allFindings = append(allFindings, latest.Findings...)
-		}
-	} else {
-		targets, err := s.Store.Targets()
-		if err != nil {
-			writeJSONError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
-			return
-		}
-		for _, t := range targets {
-			latest, ok, err := s.Store.Latest(t)
-			if err == nil && ok {
-				allFindings = append(allFindings, latest.Findings...)
-			}
-		}
+	filter := storage.FindingsFilter{
+		Target:   target,
+		Severity: severityFilter,
+		Analyzer: analyzerFilter,
 	}
 
-	var filtered []model.Finding
-	for _, f := range allFindings {
-		if severityFilter != "" && string(f.Severity) != severityFilter {
-			continue
-		}
-		if analyzerFilter != "" && strings.ToLower(f.Analyzer) != analyzerFilter {
-			continue
-		}
-		filtered = append(filtered, f)
+	// FindingsPage uses a single correlated-subquery SQL statement that fetches only
+	// the latest scan per target — not full scan history — and applies filters before
+	// returning the requested page. This replaces the previous N+1 pattern.
+	findings, total, err := s.Store.FindingsPage(filter, page.Limit, page.Offset)
+	if err != nil {
+		writeJSONError(w, http.StatusInternalServerError, "STORAGE_ERROR", err.Error())
+		return
+	}
+
+	if findings == nil {
+		findings = []model.Finding{}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"target":   target,
-		"total":    len(filtered),
-		"findings": filtered,
+		"total":    total,
+		"limit":    page.Limit,
+		"offset":   page.Offset,
+		"findings": findings,
 	})
 }
+
 
 func (s *Server) handleGetAssets(w http.ResponseWriter, r *http.Request) {
 	target := r.URL.Query().Get("target")

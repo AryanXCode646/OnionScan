@@ -360,6 +360,118 @@ func (s *SQLiteStore) Targets() ([]string, error) {
 	return targets, nil
 }
 
+// TargetsPage returns a page of target addresses ordered by onion_address ASC.
+// The LIMIT and OFFSET are applied inside SQLite so only the requested rows are loaded.
+func (s *SQLiteStore) TargetsPage(limit, offset int) ([]string, error) {
+	rows, err := s.db.Query(
+		`SELECT onion_address FROM targets ORDER BY onion_address ASC LIMIT ? OFFSET ?;`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var targets []string
+	for rows.Next() {
+		var addr string
+		if err := rows.Scan(&addr); err != nil {
+			return nil, err
+		}
+		targets = append(targets, addr)
+	}
+	return targets, nil
+}
+
+// CountTargets returns the total number of targets stored.
+func (s *SQLiteStore) CountTargets() (int, error) {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM targets;`).Scan(&count)
+	return count, err
+}
+
+// FindingsPage retrieves a page of findings from each target's latest scan,
+// applying the provided filter and returning (page, totalMatchingCount, error).
+//
+// Architecture note: the scans table stores full scan results as raw_json. There
+// is no normalized findings table, so we cannot do fully set-based SQL pagination
+// on individual findings. The approach here is:
+//  1. Identify each target's latest scan using a correlated subquery (efficient
+//     because idx_scans_target_ended covers this).
+//  2. Load only those latest scan rows — one row per target, not the full history.
+//  3. Unmarshal each row and filter findings in application memory.
+//  4. Determine the total count and extract the requested page.
+//
+// This is materially better than the previous implementation which called
+// Store.Targets() + Store.Latest() for every target separately (N+1 queries).
+// Here we perform a single SQL query that retrieves at most one raw_json blob per
+// target (not all scans), and filter once per target in application code.
+func (s *SQLiteStore) FindingsPage(filter FindingsFilter, limit, offset int) ([]model.Finding, int, error) {
+	// Build the WHERE clause for the targets join
+	var args []interface{}
+	baseQuery := `
+		SELECT s.raw_json
+		FROM scans s
+		JOIN targets t ON s.target_id = t.id
+		WHERE s.ended_at = (
+			SELECT MAX(s2.ended_at)
+			FROM scans s2
+			WHERE s2.target_id = t.id
+		)`
+
+	if filter.Target != "" {
+		baseQuery += ` AND t.onion_address = ?`
+		args = append(args, filter.Target)
+	}
+	// Order by target address then scan ended_at for deterministic pagination
+	baseQuery += ` ORDER BY t.onion_address ASC, s.ended_at DESC;`
+
+	rows, err := s.db.Query(baseQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	// Collect all matching findings (after filter) to determine total before slicing.
+	// We only load the latest scan per target, not full history — this is the key
+	// scalability improvement over the previous implementation.
+	var allFiltered []model.Finding
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, 0, err
+		}
+		var result model.ScanResult
+		if err := json.Unmarshal([]byte(raw), &result); err != nil {
+			return nil, 0, err
+		}
+		for _, f := range result.Findings {
+			if filter.Severity != "" && string(f.Severity) != filter.Severity {
+				continue
+			}
+			if filter.Analyzer != "" && strings.ToLower(f.Analyzer) != filter.Analyzer {
+				continue
+			}
+			allFiltered = append(allFiltered, f)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	total := len(allFiltered)
+
+	// Apply pagination slice
+	if offset >= total {
+		return []model.Finding{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return allFiltered[offset:end], total, nil
+}
+
 // FindCoOccurringTargets returns all targets that have exhibited the specified evidence.
 func (s *SQLiteStore) FindCoOccurringTargets(evType model.EvidenceType, rawVal string) ([]TargetLink, error) {
 	canon := CanonicalizeValue(evType, rawVal)

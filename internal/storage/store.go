@@ -42,6 +42,13 @@ type AssetItem struct {
 	CoOccurringTargets []string           `json:"co_occurring_targets"`
 }
 
+// FindingsFilter holds optional filter criteria for paginated findings queries.
+type FindingsFilter struct {
+	Target   string // empty = all targets
+	Severity string // empty = any; must be uppercased e.g. "HIGH"
+	Analyzer string // empty = any; matched case-insensitively
+}
+
 // Store abstracts the persistence layer for scan results and evidence indexing.
 type Store interface {
 	Save(result model.ScanResult) (string, error)
@@ -49,6 +56,15 @@ type Store interface {
 	Latest(onion string) (model.ScanResult, bool, error)
 	GetScan(onion string, scanID string) (model.ScanResult, bool, error)
 	Targets() ([]string, error)
+	// TargetsPage returns a deterministically ordered (onion_address ASC) page of
+	// target addresses. limit and offset are applied inside the storage layer.
+	TargetsPage(limit, offset int) ([]string, error)
+	// CountTargets returns the total number of recorded targets.
+	CountTargets() (int, error)
+	// FindingsPage returns a page of findings from the latest scan per target,
+	// applying filter criteria inside the storage layer where possible.
+	// The second return value is the total count of matching findings (pre-pagination).
+	FindingsPage(filter FindingsFilter, limit, offset int) ([]model.Finding, int, error)
 	IndexEvidence(result model.ScanResult) error
 	FindCoOccurringTargets(evType model.EvidenceType, rawVal string) ([]TargetLink, error)
 	ListAssets(target string, evType model.EvidenceType) ([]AssetItem, error)

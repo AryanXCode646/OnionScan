@@ -598,3 +598,379 @@ func TestSQLiteStore_ConcurrentSaves(t *testing.T) {
 		t.Errorf("expected %d targets, got %d", numWorkers, len(targets))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Pagination tests — storage layer
+// ---------------------------------------------------------------------------
+
+func makeTargets(t *testing.T, store *SQLiteStore, onions []string) {
+	t.Helper()
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	for _, onion := range onions {
+		res := model.ScanResult{
+			Target:    model.Target{Onion: onion},
+			StartedAt: now,
+			EndedAt:   now.Add(time.Minute),
+			RiskScore: 10,
+		}
+		if _, err := store.Save(res); err != nil {
+			t.Fatalf("Save(%s) failed: %v", onion, err)
+		}
+		now = now.Add(2 * time.Minute)
+	}
+}
+
+func TestSQLiteStore_CountTargets(t *testing.T) {
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite failed: %v", err)
+	}
+	defer store.Close()
+
+	n, err := store.CountTargets()
+	if err != nil {
+		t.Fatalf("CountTargets failed: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected 0 before any targets, got %d", n)
+	}
+
+	onions := []string{"aaa.onion", "bbb.onion", "ccc.onion", "ddd.onion", "eee.onion"}
+	makeTargets(t, store, onions)
+
+	n, err = store.CountTargets()
+	if err != nil {
+		t.Fatalf("CountTargets failed: %v", err)
+	}
+	if n != 5 {
+		t.Errorf("expected 5 targets, got %d", n)
+	}
+}
+
+func TestSQLiteStore_TargetsPage(t *testing.T) {
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite failed: %v", err)
+	}
+	defer store.Close()
+
+	onions := []string{"aaa.onion", "bbb.onion", "ccc.onion", "ddd.onion", "eee.onion"}
+	makeTargets(t, store, onions)
+
+	// Page 1: limit=2, offset=0
+	page1, err := store.TargetsPage(2, 0)
+	if err != nil {
+		t.Fatalf("TargetsPage(2, 0) failed: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("expected 2 targets, got %d", len(page1))
+	}
+	if page1[0] != "aaa.onion" || page1[1] != "bbb.onion" {
+		t.Errorf("unexpected page1: %v", page1)
+	}
+
+	// Page 2: limit=2, offset=2
+	page2, err := store.TargetsPage(2, 2)
+	if err != nil {
+		t.Fatalf("TargetsPage(2, 2) failed: %v", err)
+	}
+	if len(page2) != 2 {
+		t.Fatalf("expected 2 targets, got %d", len(page2))
+	}
+	if page2[0] != "ccc.onion" || page2[1] != "ddd.onion" {
+		t.Errorf("unexpected page2: %v", page2)
+	}
+
+	// Page 3: limit=2, offset=4 (last element only)
+	page3, err := store.TargetsPage(2, 4)
+	if err != nil {
+		t.Fatalf("TargetsPage(2, 4) failed: %v", err)
+	}
+	if len(page3) != 1 {
+		t.Fatalf("expected 1 target, got %d", len(page3))
+	}
+	if page3[0] != "eee.onion" {
+		t.Errorf("expected eee.onion, got %s", page3[0])
+	}
+
+	// Offset beyond total — expect empty
+	page4, err := store.TargetsPage(2, 10)
+	if err != nil {
+		t.Fatalf("TargetsPage(2, 10) failed: %v", err)
+	}
+	if len(page4) != 0 {
+		t.Errorf("expected 0 targets for offset beyond total, got %d", len(page4))
+	}
+
+	// Deterministic: calling twice returns same order
+	dup1, _ := store.TargetsPage(5, 0)
+	dup2, _ := store.TargetsPage(5, 0)
+	if len(dup1) != len(dup2) {
+		t.Errorf("expected same length on duplicate call")
+	}
+	for i := range dup1 {
+		if dup1[i] != dup2[i] {
+			t.Errorf("ordering not deterministic at index %d: %s vs %s", i, dup1[i], dup2[i])
+		}
+	}
+
+	// Verify no overlap between consecutive pages
+	seen := make(map[string]bool)
+	for _, p := range [][]string{page1, page2, page3} {
+		for _, addr := range p {
+			if seen[addr] {
+				t.Errorf("duplicate target across pages: %s", addr)
+			}
+			seen[addr] = true
+		}
+	}
+}
+
+func TestSQLiteStore_FindingsPage_Basic(t *testing.T) {
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite failed: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	// Create 3 targets, each with 3 findings in their latest scan
+	for i := 0; i < 3; i++ {
+		onion := fmt.Sprintf("target-%02d.onion", i)
+		findings := []model.Finding{
+			{ID: fmt.Sprintf("F%d-1", i), Title: "Finding A", Severity: model.SeverityHigh, Analyzer: "headers", Target: onion},
+			{ID: fmt.Sprintf("F%d-2", i), Title: "Finding B", Severity: model.SeverityMedium, Analyzer: "opsec", Target: onion},
+			{ID: fmt.Sprintf("F%d-3", i), Title: "Finding C", Severity: model.SeverityLow, Analyzer: "headers", Target: onion},
+		}
+		res := model.ScanResult{
+			Target:    model.Target{Onion: onion},
+			StartedAt: now,
+			EndedAt:   now.Add(time.Minute),
+			Findings:  findings,
+		}
+		if _, err := store.Save(res); err != nil {
+			t.Fatalf("Save failed: %v", err)
+		}
+		now = now.Add(5 * time.Minute)
+	}
+
+	// Total findings: 3 targets × 3 findings = 9
+	filter := FindingsFilter{}
+
+	// Get all (limit > total)
+	all, total, err := store.FindingsPage(filter, 50, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage failed: %v", err)
+	}
+	if total != 9 {
+		t.Errorf("expected total=9, got %d", total)
+	}
+	if len(all) != 9 {
+		t.Errorf("expected 9 findings, got %d", len(all))
+	}
+
+	// Page 1: limit=4, offset=0
+	p1, tot1, err := store.FindingsPage(filter, 4, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage page1 failed: %v", err)
+	}
+	if tot1 != 9 {
+		t.Errorf("expected total=9, got %d", tot1)
+	}
+	if len(p1) != 4 {
+		t.Errorf("expected 4 findings on page1, got %d", len(p1))
+	}
+
+	// Page 2: limit=4, offset=4
+	p2, tot2, err := store.FindingsPage(filter, 4, 4)
+	if err != nil {
+		t.Fatalf("FindingsPage page2 failed: %v", err)
+	}
+	if tot2 != 9 {
+		t.Errorf("expected total=9, got %d", tot2)
+	}
+	if len(p2) != 4 {
+		t.Errorf("expected 4 findings on page2, got %d", len(p2))
+	}
+
+	// Page 3: limit=4, offset=8 (only 1 left)
+	p3, tot3, err := store.FindingsPage(filter, 4, 8)
+	if err != nil {
+		t.Fatalf("FindingsPage page3 failed: %v", err)
+	}
+	if tot3 != 9 {
+		t.Errorf("expected total=9, got %d", tot3)
+	}
+	if len(p3) != 1 {
+		t.Errorf("expected 1 finding on page3, got %d", len(p3))
+	}
+
+	// No duplicates across pages
+	seen := make(map[string]bool)
+	for _, f := range append(append(p1, p2...), p3...) {
+		if seen[f.ID] {
+			t.Errorf("duplicate finding ID across pages: %s", f.ID)
+		}
+		seen[f.ID] = true
+	}
+
+	// Offset beyond total
+	beyondPage, beyondTotal, err := store.FindingsPage(filter, 4, 100)
+	if err != nil {
+		t.Fatalf("FindingsPage beyond total failed: %v", err)
+	}
+	if beyondTotal != 9 {
+		t.Errorf("expected total=9 even beyond offset, got %d", beyondTotal)
+	}
+	if len(beyondPage) != 0 {
+		t.Errorf("expected 0 findings beyond offset, got %d", len(beyondPage))
+	}
+}
+
+func TestSQLiteStore_FindingsPage_Filters(t *testing.T) {
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite failed: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	onion := "filter-test.onion"
+	findings := []model.Finding{
+		{ID: "H1", Severity: model.SeverityHigh, Analyzer: "headers", Target: onion},
+		{ID: "H2", Severity: model.SeverityHigh, Analyzer: "opsec", Target: onion},
+		{ID: "M1", Severity: model.SeverityMedium, Analyzer: "headers", Target: onion},
+		{ID: "L1", Severity: model.SeverityLow, Analyzer: "headers", Target: onion},
+	}
+	res := model.ScanResult{
+		Target:    model.Target{Onion: onion},
+		StartedAt: now,
+		EndedAt:   now.Add(time.Minute),
+		Findings:  findings,
+	}
+	if _, err := store.Save(res); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Severity filter
+	highOnly, total, err := store.FindingsPage(FindingsFilter{Severity: "HIGH"}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage severity failed: %v", err)
+	}
+	if total != 2 {
+		t.Errorf("expected total=2 for HIGH severity, got %d", total)
+	}
+	if len(highOnly) != 2 {
+		t.Errorf("expected 2 HIGH findings, got %d", len(highOnly))
+	}
+	for _, f := range highOnly {
+		if f.Severity != model.SeverityHigh {
+			t.Errorf("expected HIGH severity, got %s", f.Severity)
+		}
+	}
+
+	// Analyzer filter
+	headersOnly, total2, err := store.FindingsPage(FindingsFilter{Analyzer: "headers"}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage analyzer failed: %v", err)
+	}
+	if total2 != 3 {
+		t.Errorf("expected total=3 for headers analyzer, got %d", total2)
+	}
+	if len(headersOnly) != 3 {
+		t.Errorf("expected 3 headers findings, got %d", len(headersOnly))
+	}
+
+	// Target filter
+	targetOnly, total3, err := store.FindingsPage(FindingsFilter{Target: onion}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage target failed: %v", err)
+	}
+	if total3 != 4 {
+		t.Errorf("expected total=4 for target filter, got %d", total3)
+	}
+	if len(targetOnly) != 4 {
+		t.Errorf("expected 4 findings for target, got %d", len(targetOnly))
+	}
+
+	// Multiple filters: HIGH severity + headers analyzer
+	combo, total4, err := store.FindingsPage(FindingsFilter{Severity: "HIGH", Analyzer: "headers"}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage combo failed: %v", err)
+	}
+	if total4 != 1 {
+		t.Errorf("expected total=1 for HIGH+headers, got %d", total4)
+	}
+	if len(combo) != 1 || combo[0].ID != "H1" {
+		t.Errorf("expected H1 finding, got %v", combo)
+	}
+
+	// Non-existent target returns 0
+	missing, total5, err := store.FindingsPage(FindingsFilter{Target: "nonexistent.onion"}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage missing target failed: %v", err)
+	}
+	if total5 != 0 || len(missing) != 0 {
+		t.Errorf("expected empty for missing target, got total=%d, len=%d", total5, len(missing))
+	}
+}
+
+func TestSQLiteStore_FindingsPage_LatestScanOnly(t *testing.T) {
+	// Verify that FindingsPage only looks at the latest scan per target,
+	// not older scans. This is the key correctness property.
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite failed: %v", err)
+	}
+	defer store.Close()
+
+	onion := "latest-test.onion"
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	// Old scan with HIGH finding
+	old := model.ScanResult{
+		Target:    model.Target{Onion: onion},
+		StartedAt: now,
+		EndedAt:   now.Add(time.Minute),
+		Findings: []model.Finding{
+			{ID: "OLD-HIGH", Severity: model.SeverityHigh, Analyzer: "headers", Target: onion},
+		},
+	}
+	if _, err := store.Save(old); err != nil {
+		t.Fatalf("Save old scan: %v", err)
+	}
+
+	// Latest scan: only LOW findings
+	latest := model.ScanResult{
+		Target:    model.Target{Onion: onion},
+		StartedAt: now.Add(10 * time.Minute),
+		EndedAt:   now.Add(11 * time.Minute),
+		Findings: []model.Finding{
+			{ID: "NEW-LOW", Severity: model.SeverityLow, Analyzer: "opsec", Target: onion},
+		},
+	}
+	if _, err := store.Save(latest); err != nil {
+		t.Fatalf("Save latest scan: %v", err)
+	}
+
+	// FindingsPage should only see the latest scan's findings
+	highFindings, total, err := store.FindingsPage(FindingsFilter{Severity: "HIGH"}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage: %v", err)
+	}
+	if total != 0 || len(highFindings) != 0 {
+		t.Errorf("expected 0 HIGH findings (old scan), got total=%d, len=%d", total, len(highFindings))
+	}
+
+	allFindings, total2, err := store.FindingsPage(FindingsFilter{}, 10, 0)
+	if err != nil {
+		t.Fatalf("FindingsPage all: %v", err)
+	}
+	if total2 != 1 {
+		t.Errorf("expected 1 finding from latest scan, got %d", total2)
+	}
+	if len(allFindings) != 1 || allFindings[0].ID != "NEW-LOW" {
+		t.Errorf("expected NEW-LOW finding, got %v", allFindings)
+	}
+}

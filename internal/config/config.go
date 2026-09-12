@@ -21,6 +21,8 @@ type Config struct {
 	Limits             crawler.Limits
 	MaxConcurrentScans int
 	MaxQueueSize       int
+	AuthToken          string
+	CORSOrigins        []string
 }
 
 // DefaultConfig returns the baseline configuration with crawler and tor defaults.
@@ -136,6 +138,17 @@ func Parse(r io.Reader, base Config) (Config, error) {
 				return base, fmt.Errorf("line %d: invalid integer for %s: %w", lineNum, key, err)
 			}
 			base.MaxQueueSize = n
+
+		case "auth_token", "api_key", "key":
+			base.AuthToken = val
+
+		case "cors_origin", "cors_origins", "cors":
+			for _, part := range strings.Split(val, ",") {
+				part = strings.TrimSpace(part)
+				if part != "" {
+					base.CORSOrigins = append(base.CORSOrigins, part)
+				}
+			}
 
 		default:
 			// Unknown key: ignore to allow forward compatibility

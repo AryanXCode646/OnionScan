@@ -189,6 +189,74 @@ func (s *FileStore) Targets() ([]string, error) {
 	return targets, nil
 }
 
+// TargetsPage returns a deterministically ordered page of targets using LIMIT/OFFSET semantics
+// over the sorted directory listing (filesystem-backed equivalent of SQL LIMIT/OFFSET).
+func (s *FileStore) TargetsPage(limit, offset int) ([]string, error) {
+	all, err := s.Targets()
+	if err != nil {
+		return nil, err
+	}
+	if offset >= len(all) {
+		return nil, nil
+	}
+	end := offset + limit
+	if end > len(all) {
+		end = len(all)
+	}
+	return all[offset:end], nil
+}
+
+// CountTargets returns the total number of targets in the file store.
+func (s *FileStore) CountTargets() (int, error) {
+	all, err := s.Targets()
+	if err != nil {
+		return 0, err
+	}
+	return len(all), nil
+}
+
+// FindingsPage returns a paginated slice of findings from each target's latest scan,
+// filtered by the provided FindingsFilter.
+func (s *FileStore) FindingsPage(filter FindingsFilter, limit, offset int) ([]model.Finding, int, error) {
+	var targets []string
+	if filter.Target != "" {
+		targets = []string{filter.Target}
+	} else {
+		var err error
+		targets, err = s.Targets()
+		if err != nil {
+			return nil, 0, err
+		}
+	}
+
+	var allFiltered []model.Finding
+	for _, t := range targets {
+		latest, ok, err := s.Latest(t)
+		if err != nil || !ok {
+			continue
+		}
+		for _, f := range latest.Findings {
+			if filter.Severity != "" && string(f.Severity) != filter.Severity {
+				continue
+			}
+			if filter.Analyzer != "" && strings.ToLower(f.Analyzer) != filter.Analyzer {
+				continue
+			}
+			allFiltered = append(allFiltered, f)
+		}
+	}
+
+	total := len(allFiltered)
+	if offset >= total {
+		return []model.Finding{}, total, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return allFiltered[offset:end], total, nil
+}
+
 // IndexEvidence records all evidence facts from a scan into the inverted evidence store.
 func (s *FileStore) IndexEvidence(result model.ScanResult) error {
 	s.mu.Lock()
