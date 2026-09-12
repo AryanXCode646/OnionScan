@@ -32,13 +32,13 @@ echo "=========================================="
 
 # 1. Update go.mod
 echo "[1/4] Updating go.mod..."
-sed -i "s|^module .*|module ${NEW_MODULE}|" "${ROOT_DIR}/go.mod"
+sed -i.bak "s|^module .*|module ${NEW_MODULE}|" "${ROOT_DIR}/go.mod" && rm -f "${ROOT_DIR}/go.mod.bak"
 
 # 2. Update all internal Go imports
 echo "[2/4] Updating import declarations across all Go source files..."
 find "${ROOT_DIR}" -name "*.go" -not -path '*/node_modules/*' -not -path '*/.git/*' | while read -r file; do
     if grep -q "${CURRENT_MODULE}" "${file}"; then
-        sed -i "s|${CURRENT_MODULE}|${NEW_MODULE}|g" "${file}"
+        sed -i.bak "s|${CURRENT_MODULE}|${NEW_MODULE}|g" "${file}" && rm -f "${file}.bak"
     fi
 done
 
