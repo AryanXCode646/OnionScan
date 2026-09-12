@@ -259,3 +259,107 @@ func TestDeduplicateFindings_PreservesOrderAndDistinguishesFindings(t *testing.T
 		t.Errorf("unexpected fourth finding: %+v", deduped[3])
 	}
 }
+
+// makeF is a concise helper for constructing a Finding in table tests.
+func makeF(id string, sev model.Severity, conf float64) model.Finding {
+	return model.Finding{
+		ID:         id,
+		Title:      id,
+		Severity:   sev,
+		Confidence: conf,
+		Target:     "test.onion",
+		Analyzer:   "test",
+		CreatedAt:  time.Now(),
+	}
+}
+
+func TestScore_ConfidenceWeighting(t *testing.T) {
+	findings := []model.Finding{
+		makeF("M-001", model.SeverityMedium, 0.8),
+	}
+	// 15 * 0.8 = 12
+	got := Score(findings)
+	if got != 12 {
+		t.Errorf("Score(Medium@0.8) = %d, want 12", got)
+	}
+}
+
+func TestScore_UnknownSeverityIgnored(t *testing.T) {
+	unknown := model.Finding{
+		ID:         "U-001",
+		Severity:   model.Severity("BOGUS"),
+		Confidence: 1.0,
+		Target:     "test.onion",
+		Analyzer:   "test",
+	}
+	got := Score([]model.Finding{unknown})
+	if got != 0 {
+		t.Errorf("Score([unknown severity]) = %d, want 0 (ignored)", got)
+	}
+
+	mixed := []model.Finding{
+		unknown,
+		makeF("L-001", model.SeverityLow, 1.0),
+	}
+	got = Score(mixed)
+	if got != 5 {
+		t.Errorf("Score([unknown + LOW]) = %d, want 5", got)
+	}
+}
+
+func TestScore_TableDriven(t *testing.T) {
+	tests := []struct {
+		name     string
+		findings []model.Finding
+		want     int
+	}{
+		{
+			name:     "one INFO",
+			findings: []model.Finding{makeF("I", model.SeverityInfo, 1.0)},
+			want:     0,
+		},
+		{
+			name:     "one LOW",
+			findings: []model.Finding{makeF("L", model.SeverityLow, 1.0)},
+			want:     5,
+		},
+		{
+			name:     "one MEDIUM",
+			findings: []model.Finding{makeF("M", model.SeverityMedium, 1.0)},
+			want:     15,
+		},
+		{
+			name:     "one HIGH",
+			findings: []model.Finding{makeF("H", model.SeverityHigh, 1.0)},
+			want:     30,
+		},
+		{
+			name:     "one CRITICAL",
+			findings: []model.Finding{makeF("C", model.SeverityCritical, 1.0)},
+			want:     50,
+		},
+		{
+			name:     "LOW half-confidence",
+			findings: []model.Finding{makeF("L", model.SeverityLow, 0.5)},
+			want:     2,
+		},
+		{
+			name: "exceed cap distinct",
+			findings: []model.Finding{
+				makeF("C1", model.SeverityCritical, 1.0),
+				makeF("C2", model.SeverityCritical, 1.0),
+				makeF("C3", model.SeverityCritical, 1.0),
+			},
+			want: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Score(tt.findings)
+			if got != tt.want {
+				t.Errorf("Score() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}

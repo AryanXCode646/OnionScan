@@ -203,3 +203,37 @@ func TestRun_DeduplicatesFindingsAcrossPages(t *testing.T) {
 		t.Errorf("expected risk score 4 (un-inflated), got %d", result.RiskScore)
 	}
 }
+
+// TestDefaultRegistry verifies that the default registry contains all expected built-in analyzers
+// in the expected registration order.
+func TestDefaultRegistry(t *testing.T) {
+	reg := DefaultRegistry()
+	if reg == nil {
+		t.Fatal("DefaultRegistry() returned nil")
+	}
+
+	analyzers := reg.All()
+	expected := []string{
+		"headers",
+		"opsec",
+		"fingerprint",
+		"tls",
+		"robots",
+		"metadata",
+		"jsanalysis",
+		"external",
+		"apidetect",
+		"credentials",
+	}
+
+	if len(analyzers) != len(expected) {
+		t.Fatalf("expected %d analyzers in default registry, got %d", len(expected), len(analyzers))
+	}
+
+	for i, want := range expected {
+		got := analyzers[i].Name()
+		if got != want {
+			t.Errorf("analyzer at index %d = %q, want %q", i, got, want)
+		}
+	}
+}
