@@ -1,0 +1,16 @@
+# Binaries
+/onionsec
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Scan artifacts
+.onionsec/
