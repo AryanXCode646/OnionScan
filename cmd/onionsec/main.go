@@ -201,7 +201,14 @@ func parseScanOptions(args []string) (scanOptions, error) {
 }
 
 func cmdScan(args []string) {
-	if err := runScan(context.Background(), args, os.Stdout, os.Stderr); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := runScan(ctx, args, os.Stdout, os.Stderr); err != nil {
+		if errors.Is(err, context.Canceled) {
+			fmt.Fprintln(os.Stderr, "\nscan cancelled by user")
+			os.Exit(130)
+		}
 		var exitErr *exitCodeError
 		if errors.As(err, &exitErr) {
 			os.Exit(exitErr.code)
@@ -255,6 +262,9 @@ func runScanWithClient(ctx context.Context, args []string, client *http.Client, 
 		result, err := scan.Run(scanCtx, client, store, target, cfg.Limits)
 		cancel()
 		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			fmt.Fprintf(stderr, "scan failed [%s]: %v\n", onion, err)
 			continue
 		}

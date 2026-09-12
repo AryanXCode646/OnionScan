@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -641,5 +642,131 @@ func TestAsyncScan_FailedScanStatus(t *testing.T) {
 	}
 	if getResp["error"] == nil || getResp["error"] == "" {
 		t.Errorf("expected non-empty error message, got %v", getResp["error"])
+	}
+}
+
+func TestPagination_TargetsAndFindings(t *testing.T) {
+	srv, store, _ := setupTestServer(t, "")
+	defer store.Close()
+
+	// Seed 3 targets with 2 findings each
+	for i := 1; i <= 3; i++ {
+		onion := fmt.Sprintf("target%d.onion", i)
+		scan := model.ScanResult{
+			Target:    model.Target{Onion: onion},
+			StartedAt: time.Now().Add(-time.Minute),
+			EndedAt:   time.Now(),
+			RiskScore: 20 * i,
+			Findings: []model.Finding{
+				{
+					ID:         fmt.Sprintf("TEST-00%d-A", i),
+					Title:      "Finding A",
+					Severity:   model.SeverityLow,
+					Confidence: 0.8,
+					Target:     onion,
+					Analyzer:   "headers",
+				},
+				{
+					ID:         fmt.Sprintf("TEST-00%d-B", i),
+					Title:      "Finding B",
+					Severity:   model.SeverityMedium,
+					Confidence: 0.9,
+					Target:     onion,
+					Analyzer:   "opsec",
+				},
+			},
+		}
+		if _, err := store.Save(scan); err != nil {
+			t.Fatalf("Save target %d failed: %v", i, err)
+		}
+	}
+
+	// Test 1: GET /v1/targets pagination page 1
+	req := httptest.NewRequest(http.MethodGet, "/v1/targets?limit=2&offset=0", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var respTargets1 struct {
+		Targets []map[string]interface{} `json:"targets"`
+		Total   int                      `json:"total"`
+		Limit   int                      `json:"limit"`
+		Offset  int                      `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &respTargets1); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if respTargets1.Total != 3 {
+		t.Errorf("expected total 3, got %d", respTargets1.Total)
+	}
+	if len(respTargets1.Targets) != 2 {
+		t.Errorf("expected 2 targets on page 1, got %d", len(respTargets1.Targets))
+	}
+	if respTargets1.Limit != 2 || respTargets1.Offset != 0 {
+		t.Errorf("expected limit=2 offset=0, got limit=%d offset=%d", respTargets1.Limit, respTargets1.Offset)
+	}
+
+	// Test 2: GET /v1/targets pagination page 2
+	req = httptest.NewRequest(http.MethodGet, "/v1/targets?limit=2&offset=2", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var respTargets2 struct {
+		Targets []map[string]interface{} `json:"targets"`
+		Total   int                      `json:"total"`
+		Limit   int                      `json:"limit"`
+		Offset  int                      `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &respTargets2); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if len(respTargets2.Targets) != 1 {
+		t.Errorf("expected 1 target on page 2, got %d", len(respTargets2.Targets))
+	}
+
+	// Test 3: GET /v1/findings pagination (total 6 findings across 3 targets)
+	req = httptest.NewRequest(http.MethodGet, "/v1/findings?limit=4&offset=0", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var respFindings1 struct {
+		Findings []map[string]interface{} `json:"findings"`
+		Total    int                      `json:"total"`
+		Limit    int                      `json:"limit"`
+		Offset   int                      `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &respFindings1); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if respFindings1.Total != 6 {
+		t.Errorf("expected total 6 findings, got %d", respFindings1.Total)
+	}
+	if len(respFindings1.Findings) != 4 {
+		t.Errorf("expected 4 findings on page 1, got %d", len(respFindings1.Findings))
+	}
+
+	// Test 4: GET /v1/findings page 2
+	req = httptest.NewRequest(http.MethodGet, "/v1/findings?limit=4&offset=4", nil)
+	rec = httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var respFindings2 struct {
+		Findings []map[string]interface{} `json:"findings"`
+		Total    int                      `json:"total"`
+		Limit    int                      `json:"limit"`
+		Offset   int                      `json:"offset"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &respFindings2); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if len(respFindings2.Findings) != 2 {
+		t.Errorf("expected 2 findings on page 2, got %d", len(respFindings2.Findings))
 	}
 }

@@ -33,6 +33,7 @@ import {
   GraphResponse
 } from "../lib/api";
 import EvidenceGraph from "./components/EvidenceGraph";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 type Tab = "scans" | "findings" | "assets" | "graph" | "diff" | "settings";
 
@@ -1134,7 +1135,9 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <EvidenceGraph data={graphData} target={graphTarget} loading={graphLoading} />
+            <ErrorBoundary fallbackTitle="Evidence Graph Failed to Render">
+              <EvidenceGraph data={graphData} target={graphTarget} loading={graphLoading} />
+            </ErrorBoundary>
           </div>
         )}
 

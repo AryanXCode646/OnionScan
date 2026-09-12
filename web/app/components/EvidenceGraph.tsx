@@ -10,7 +10,8 @@ import {
   Download,
   Info,
   Layers,
-  Network
+  Network,
+  AlertTriangle
 } from "lucide-react";
 import { GraphResponse } from "../../lib/api";
 
@@ -26,6 +27,7 @@ export default function EvidenceGraph({ data, target, loading }: EvidenceGraphPr
 
   const [selectedElement, setSelectedElement] = useState<any | null>(null);
   const [layoutName, setLayoutName] = useState<string>("cose");
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   // Initialize and update Cytoscape
   useEffect(() => {
@@ -37,28 +39,37 @@ export default function EvidenceGraph({ data, target, loading }: EvidenceGraphPr
         cyRef.current = null;
       }
       setSelectedElement(null);
+      setRenderError(null);
       return;
     }
 
-    // Destroy existing instance before recreation
-    if (cyRef.current) {
-      cyRef.current.destroy();
-    }
+    // Defensive edge filtering: ensure both source and target exist in declared nodes
+    const validNodeIds = new Set(data.elements.nodes.map((n) => n.data.id));
+    const validEdges = (data.elements.edges || []).filter(
+      (e) => e && e.data && validNodeIds.has(e.data.source) && validNodeIds.has(e.data.target)
+    );
 
     const elements = [
       ...data.elements.nodes.map((n) => ({
         group: "nodes" as const,
         data: n.data,
       })),
-      ...data.elements.edges.map((e) => ({
+      ...validEdges.map((e) => ({
         group: "edges" as const,
         data: e.data,
       })),
     ];
 
-    const cy = cytoscape({
-      container: containerRef.current,
-      elements,
+    try {
+      setRenderError(null);
+      // Destroy existing instance before recreation
+      if (cyRef.current) {
+        cyRef.current.destroy();
+      }
+
+      const cy = cytoscape({
+        container: containerRef.current,
+        elements,
       style: [
         {
           selector: "node",
@@ -225,6 +236,10 @@ export default function EvidenceGraph({ data, target, loading }: EvidenceGraphPr
     });
 
     cyRef.current = cy;
+  } catch (err: any) {
+    console.error("Cytoscape initialization error:", err);
+    setRenderError(err?.message || "Failed to initialize evidence graph canvas");
+  }
 
     return () => {
       if (cyRef.current) {
@@ -288,13 +303,31 @@ export default function EvidenceGraph({ data, target, loading }: EvidenceGraphPr
       )}
 
       {/* Empty State */}
-      {!loading && (!data || nodeCount === 0) && (
+      {!loading && !renderError && (!data || nodeCount === 0) && (
         <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", zIndex: 5 }}>
           <Network size={48} style={{ marginBottom: "12px", opacity: 0.4 }} />
           <div style={{ fontSize: "1rem", fontWeight: 500 }}>No Evidence Graph Available</div>
           <div style={{ fontSize: "0.8125rem", marginTop: "4px" }}>
             Select a target with recorded scan evidence to visualize correlation nodes.
           </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {!loading && renderError && (
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#f87171", zIndex: 5, padding: "24px", textAlign: "center" }}>
+          <AlertTriangle size={48} style={{ marginBottom: "12px", opacity: 0.8 }} />
+          <div style={{ fontSize: "1rem", fontWeight: 600 }}>Graph Rendering Error</div>
+          <div style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "6px", maxWidth: "420px" }}>
+            {renderError}
+          </div>
+          <button
+            onClick={() => setLayoutName(layoutName === "cose" ? "breadthfirst" : "cose")}
+            className="btn btn-secondary"
+            style={{ marginTop: "16px", padding: "6px 14px", fontSize: "0.75rem" }}
+          >
+            Retry with alternative layout
+          </button>
         </div>
       )}
 

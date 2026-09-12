@@ -1,0 +1,30 @@
+version: 2
+updates:
+  # Maintain Go dependencies
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "maintenance"
+      - "core"
+
+  # Maintain Next.js web dashboard dependencies
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "maintenance"
+      - "ui"
+
+  # Maintain GitHub Actions workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "maintenance"

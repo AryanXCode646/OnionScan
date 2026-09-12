@@ -1,0 +1,64 @@
+name: Bug Report
+description: Report a reproducible bug or defect in OnionSec
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Please ensure you are not reporting a security vulnerability publicly; report security issues privately via repository Security Advisories.
+  - type: textarea
+    id: problem-description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: What went wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal commands or code to reproduce the issue.
+      placeholder: |
+        1. Run command '...'
+        2. With config '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior & Logs
+      description: Provide error messages, stack traces, or command output.
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      options:
+        - CLI (onionsec)
+        - Daemon / API (onionsecd)
+        - Web Dashboard (web/)
+        - Crawler (internal/crawler)
+        - Tor SOCKS5 Client (internal/tor)
+        - Storage Engine (internal/storage)
+        - Analyzers (internal/analyzer)
+        - Correlation & Risk Engine
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS version, Go version, architecture, and Tor version.
+      placeholder: "e.g., Ubuntu 24.04, Go 1.22.5, Tor 0.4.8"
+    validations:
+      required: true

@@ -27,6 +27,7 @@ func main() {
 	var configPath string
 	var maxScans int
 	var maxQueue int
+	var writeTimeoutSec int
 
 	flag.StringVar(&addr, "addr", defaultAddr, "HTTP listen address")
 	flag.StringVar(&dbPath, "db", defaultDataDir(), "Path to SQLite database file")
@@ -35,6 +36,7 @@ func main() {
 	flag.StringVar(&configPath, "config", "", "Path to YAML config file")
 	flag.IntVar(&maxScans, "max-scans", 0, "Maximum concurrent active scans (default 4)")
 	flag.IntVar(&maxQueue, "max-queue", 0, "Maximum queued async scan jobs (default 32)")
+	flag.IntVar(&writeTimeoutSec, "write-timeout", 0, "HTTP server write timeout in seconds (default: scaled to scan total budget + 2m, min 10m)")
 	flag.Parse()
 
 	cfg, err := config.LoadFile(configPath, configPath != "")
@@ -67,11 +69,19 @@ func main() {
 		server.MaxQueueSize = cfg.MaxQueueSize
 	}
 
+	serverWriteTimeout := cfg.Limits.TotalBudget + 2*time.Minute
+	if serverWriteTimeout < 10*time.Minute {
+		serverWriteTimeout = 10 * time.Minute
+	}
+	if writeTimeoutSec > 0 {
+		serverWriteTimeout = time.Duration(writeTimeoutSec) * time.Second
+	}
+
 	httpServer := &http.Server{
 		Addr:         addr,
 		Handler:      server,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		WriteTimeout: serverWriteTimeout,
 		IdleTimeout:  120 * time.Second,
 	}
 

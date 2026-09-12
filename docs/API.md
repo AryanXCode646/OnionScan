@@ -126,18 +126,29 @@ Public liveness and readiness probe.
 
 ### 4.2 Target Management
 #### `GET /v1/targets`
-Retrieves a list of all targets currently tracked in the database.
+Retrieves a paginated list of all targets currently tracked in the database.
+
+**Query Parameters:**
+- `limit` (optional, integer): Maximum number of targets to return (default: 50, maximum: 500).
+- `offset` (optional, integer): Number of targets to skip (default: 0).
 
 **Response (`200 OK`):**
 ```json
 {
+  "total": 1,
+  "limit": 50,
+  "offset": 0,
   "targets": [
     {
       "onion": "expyuzvj2wvx2n7wzrq4yquz7x7lcv7f4z2f4r6r6b7w6y6x7z2f4r6d.onion",
+      "target": "expyuzvj2wvx2n7wzrq4yquz7x7lcv7f4z2f4r6r6b7w6y6x7z2f4r6d.onion",
       "first_scanned_at": "2026-09-10T12:00:00Z",
       "last_scanned_at": "2026-09-12T14:30:00Z",
+      "latest_scan_at": "2026-09-12T14:30:00Z",
       "total_scans": 5,
-      "latest_risk_score": 42
+      "scan_count": 5,
+      "latest_risk_score": 42,
+      "latest_findings_count": 3
     }
   ]
 }
@@ -244,12 +255,16 @@ Lists findings across scans, with flexible filtering.
 - `target` (optional): Filter findings for a specific onion service.
 - `severity` (optional): Filter by minimum severity (`INFO`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
 - `analyzer` (optional): Filter by analyzer (`headers`, `opsec`, `tls`, `robots`, `jsanalysis`, `external`, `apidetect`, `credentials`, `metadata`).
+- `limit` (optional, integer): Maximum number of findings to return (default: 50, maximum: 500).
+- `offset` (optional, integer): Number of findings to skip (default: 0).
 
 **Response (`200 OK`):**
 ```json
 {
   "target": "example23456789.onion",
   "total": 2,
+  "limit": 50,
+  "offset": 0,
   "findings": [
     {
       "id": "OPSEC-001",

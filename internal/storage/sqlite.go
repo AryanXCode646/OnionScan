@@ -23,7 +23,7 @@ type SQLiteStore struct {
 func OpenSQLite(dbPath string) (*SQLiteStore, error) {
 	var dsn string
 	if dbPath == ":memory:" {
-		dsn = "file::memory:?cache=shared&mode=memory"
+		dsn = "file::memory:?cache=shared&mode=memory&_foreign_keys=ON"
 	} else {
 		// If given a directory path, use onionsec.db inside it
 		if strings.HasSuffix(dbPath, string(filepath.Separator)) {
@@ -38,7 +38,7 @@ func OpenSQLite(dbPath string) (*SQLiteStore, error) {
 		if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 			return nil, fmt.Errorf("create db directory: %w", err)
 		}
-		dsn = fmt.Sprintf("%s?_busy_timeout=5000&_journal_mode=WAL", dbPath)
+		dsn = fmt.Sprintf("%s?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=ON", dbPath)
 	}
 
 	db, err := sql.Open("sqlite3", dsn)

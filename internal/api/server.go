@@ -147,6 +147,29 @@ type targetSummary struct {
 	LatestFindingsCount int       `json:"latest_findings_count"`
 }
 
+func parsePagination(r *http.Request, defaultLimit, maxLimit int) (limit, offset int) {
+	limit = defaultLimit
+	offset = 0
+
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+			if l > maxLimit {
+				limit = maxLimit
+			} else {
+				limit = l
+			}
+		}
+	}
+
+	if oStr := r.URL.Query().Get("offset"); oStr != "" {
+		if o, err := strconv.Atoi(oStr); err == nil && o >= 0 {
+			offset = o
+		}
+	}
+
+	return limit, offset
+}
+
 func (s *Server) handleGetTargets(w http.ResponseWriter, r *http.Request) {
 	targetList, err := s.Store.Targets()
 	if err != nil {
@@ -174,9 +197,23 @@ func (s *Server) handleGetTargets(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	limit, offset := parsePagination(r, 50, 500)
+	total := len(summaries)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	pagedSummaries := summaries[start:end]
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"targets": summaries,
-		"total":   len(summaries),
+		"targets": pagedSummaries,
+		"total":   total,
+		"limit":   limit,
+		"offset":  offset,
 	})
 }
 
@@ -581,10 +618,24 @@ func (s *Server) handleGetFindings(w http.ResponseWriter, r *http.Request) {
 		filtered = append(filtered, f)
 	}
 
+	limit, offset := parsePagination(r, 50, 500)
+	total := len(filtered)
+	start := offset
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	pagedFindings := filtered[start:end]
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"target":   target,
-		"total":    len(filtered),
-		"findings": filtered,
+		"total":    total,
+		"limit":    limit,
+		"offset":   offset,
+		"findings": pagedFindings,
 	})
 }
 

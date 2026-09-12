@@ -1,0 +1,25 @@
+name: Documentation Improvement
+description: Suggest improvements, corrections, or additions to documentation
+labels: ["documentation"]
+body:
+  - type: textarea
+    id: doc-issue
+    attributes:
+      label: Documentation Issue / Gap
+      description: What part of the documentation is missing, outdated, or confusing?
+      placeholder: Link to docs file or section
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-changes
+    attributes:
+      label: Proposed Improvements
+      description: What content should be added, changed, or clarified?
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a Pull Request to improve this documentation.

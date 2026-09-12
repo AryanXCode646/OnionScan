@@ -1,0 +1,47 @@
+name: Feature Request
+description: Propose a new feature, analyzer, or enhancement for OnionSec
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem-statement
+    attributes:
+      label: Problem Statement / Motivation
+      description: Is your feature request related to a problem or limitation? Please describe clearly.
+      placeholder: I am always frustrated when...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Describe how the new feature or improvement should behave.
+      placeholder: Implement a new analyzer or CLI flag that...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative Solutions Considered
+      description: What other approaches or workarounds have you considered?
+    validations:
+      required: false
+  - type: dropdown
+    id: component
+    attributes:
+      label: Target Component
+      options:
+        - New Analyzer Module
+        - CLI / Configuration
+        - Daemon / REST API
+        - Web Dashboard UI
+        - Crawler / Network Core
+        - Storage & Persistence
+        - Reporting & Exports
+    validations:
+      required: true
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to submit a Pull Request for this feature.

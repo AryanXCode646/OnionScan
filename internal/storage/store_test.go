@@ -598,3 +598,73 @@ func TestSQLiteStore_ConcurrentSaves(t *testing.T) {
 		t.Errorf("expected %d targets, got %d", numWorkers, len(targets))
 	}
 }
+
+func TestSQLiteStore_ForeignKeysAndCascadeDelete(t *testing.T) {
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite failed: %v", err)
+	}
+	defer store.Close()
+
+	// Verify PRAGMA foreign_keys is 1 (enabled)
+	var fkEnabled int
+	if err := store.db.QueryRow("PRAGMA foreign_keys;").Scan(&fkEnabled); err != nil {
+		t.Fatalf("failed to query PRAGMA foreign_keys: %v", err)
+	}
+	if fkEnabled != 1 {
+		t.Fatalf("expected PRAGMA foreign_keys to be 1, got %d", fkEnabled)
+	}
+
+	onion := "cascadetest.onion"
+	scan := model.ScanResult{
+		Target:    model.Target{Onion: onion},
+		StartedAt: time.Now().Add(-10 * time.Second),
+		EndedAt:   time.Now(),
+		RiskScore: 25,
+		Findings: []model.Finding{
+			{
+				ID:       "OPSEC-001",
+				Title:    "Test finding",
+				Severity: model.SeverityLow,
+				Target:   onion,
+				Evidence: []model.Evidence{
+					{
+						Type:        model.EvidenceIP,
+						Description: "198.51.100.99",
+					},
+				},
+			},
+		},
+	}
+
+	if _, err := store.Save(scan); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	// Verify target and scan exist
+	var scanCount int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM scans").Scan(&scanCount); err != nil {
+		t.Fatalf("query scans count failed: %v", err)
+	}
+	if scanCount != 1 {
+		t.Fatalf("expected 1 scan before target delete, got %d", scanCount)
+	}
+
+	// Delete the target
+	res, err := store.db.Exec("DELETE FROM targets WHERE onion_address = ?", onion)
+	if err != nil {
+		t.Fatalf("delete target failed: %v", err)
+	}
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected != 1 {
+		t.Fatalf("expected 1 target deleted, got %d", rowsAffected)
+	}
+
+	// Verify cascade deletion wiped child scan
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM scans").Scan(&scanCount); err != nil {
+		t.Fatalf("query scans count failed: %v", err)
+	}
+	if scanCount != 0 {
+		t.Fatalf("expected 0 scans after cascade deletion, got %d", scanCount)
+	}
+}

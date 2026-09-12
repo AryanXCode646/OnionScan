@@ -1,0 +1,39 @@
+name: Architectural RFC / Research Proposal
+description: Propose significant architectural changes, research methodology, or protocol extensions
+labels: ["enhancement", "core"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A concise executive summary of the proposal.
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation & Background
+      description: Why is this change needed? What research question or engineering limitation does it address?
+    validations:
+      required: true
+  - type: textarea
+    id: detailed-design
+    attributes:
+      label: Detailed Technical Design
+      description: Explain the architecture, data models, network interaction, and state handling. Include diagrams or pseudo-code if applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: security-privacy
+    attributes:
+      label: Security & Privacy Considerations
+      description: How does this proposal protect against deanonymization, traffic analysis, resource exhaustion, or IP leakage?
+    validations:
+      required: true
+  - type: textarea
+    id: drawbacks-alternatives
+    attributes:
+      label: Drawbacks & Alternatives
+      description: What are the trade-offs, and why is this approach preferred over alternatives?
+    validations:
+      required: true
