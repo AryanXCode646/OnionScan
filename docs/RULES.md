@@ -31,6 +31,8 @@ grouped by prefix:
 | OPSEC-001 | External analytics/tracking script detected | Medium | external |
 | INFRA-003 | External resources referenced in page content | Info | external |
 | FP-002 | API endpoint pattern detected | Info | apidetect |
+| CRED-001 | API key or token pattern disclosed | High | credentials |
+| CRED-002 | Private key header disclosed | Critical | credentials |
 
 ## Planned (see docs/ROADMAP.md Phase 2/3 and the issue tracker)
 
@@ -38,8 +40,6 @@ grouped by prefix:
 |---|---|
 | OPSEC-003 | Public EXIF metadata in uploaded images |
 | OPSEC-008 | Cloud provider metadata endpoint reference |
-| CRED-001 | API key or token pattern in page content or JS |
-| CRED-002 | Private key header (`-----BEGIN ... PRIVATE KEY-----`) found |
 
 ## Contributing a new rule
 

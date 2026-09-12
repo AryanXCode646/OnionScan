@@ -11,6 +11,7 @@ import (
 
 	"github.com/AryanXCode646/OnionScan/internal/analyzer"
 	"github.com/AryanXCode646/OnionScan/internal/analyzer/apidetect"
+	"github.com/AryanXCode646/OnionScan/internal/analyzer/credentials"
 	"github.com/AryanXCode646/OnionScan/internal/analyzer/external"
 	"github.com/AryanXCode646/OnionScan/internal/analyzer/fingerprint"
 	"github.com/AryanXCode646/OnionScan/internal/analyzer/headers"
@@ -37,6 +38,7 @@ func DefaultRegistry() *analyzer.Registry {
 	r.Register(jsanalysis.New())
 	r.Register(external.New())
 	r.Register(apidetect.New())
+	r.Register(credentials.New())
 	return r
 }
 
