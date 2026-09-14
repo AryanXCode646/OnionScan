@@ -1,68 +1,85 @@
 # Security Policy
 
-The OnionSec team takes the security of our auditing tools and users seriously. This document details our supported versions, vulnerability reporting procedures, and disclosure timeline expectations.
+The OnionSec project takes the security of its scanner and users seriously. As a tool designed to fetch and inspect untrusted remote content over the Tor network, maintaining scanner integrity, avoiding unintended traffic leaks, and protecting the host environment are paramount.
 
 ---
 
-## 1. Supported Versions
+## Supported Versions
 
-Security patches and bug fixes are prioritized for the following versions of OnionSec:
+Security updates and vulnerability patches are applied to the latest development branch and official releases.
 
-| Version / Branch | Supported          | Notes |
-| ---------------- | ------------------ | ----- |
-| `main`           | :white_check_mark: | Actively developed trunk; receives direct security patches. |
-| Latest Tag (`v0.x`) | :white_check_mark: | Latest release tags receive patch updates for critical vulnerabilities. |
-| `< v0.1.0` (Scaffold) | :x:                | Deprecated initial scaffold commits. |
-
-Users and operators are strongly encouraged to keep their installations updated to the latest commit on `main` or the latest published release.
+| Version | Supported          |
+| ------- | ------------------ |
+| `main`  | :white_check_mark: |
+| < 0.1.0 | :x:                |
 
 ---
 
-## 2. Reporting a Vulnerability
+## Reporting a Vulnerability
 
-**Please do not report security vulnerabilities in OnionSec through public GitHub issues, discussions, or pull requests.**
+**Please do not report security vulnerabilities through public GitHub issues or discussions.**
 
-### Preferred Method: GitHub Private Security Advisory
-To submit a confidential vulnerability report:
-1. Navigate to the **Security** tab of the repository: [Security Advisories](https://github.com/AryanXCode646/OnionScan/security/advisories).
-2. Click **Report a vulnerability** to open a private advisory draft.
-3. Provide a thorough summary of the issue:
-   - **Component Affected**: (e.g., crawler, Tor proxy client, HTTP API server `onionsecd`, credential analyzer, SQLite storage).
-   - **Vulnerability Type**: (e.g., SSRF, memory exhaustion, unredacted credential leakage, remote code execution).
-   - **Steps to Reproduce**: Detailed reproduction steps or minimal proof-of-concept (PoC). Please sanitize all test fixtures and avoid using live sensitive credentials or active onion addresses.
-   - **Potential Impact**: An honest assessment of the exploitability and security blast radius.
+If you discover a vulnerability in OnionSec itself:
 
----
+1. **GitHub Security Advisories (Preferred):**
+   - Navigate to the repository's **Security** tab.
+   - Click **Report a vulnerability** to open a private advisory draft.
+   - Provide a description of the issue, steps to reproduce, and any proof-of-concept code.
 
-## 3. Disclosure Timeline Expectations
+2. **Maintainer Contact:**
+   - If GitHub Security Advisories are unavailable, contact the repository maintainers directly via their published contact channels.
 
-We adhere to standard **Coordinated Vulnerability Disclosure (CVD)** principles:
+### What to Include in Your Report
 
-| Milestone | Target Response Window |
-|---|---|
-| **Initial Acknowledgment** | Within **48 to 72 hours** of report receipt. |
-| **Triage & Validation** | Within **7 business days** to confirm reproducibility and determine CVSS severity. |
-| **Patch Development & Testing** | Within **14 to 30 days** depending on vulnerability complexity. |
-| **Public Release & Advisory** | Coordinated with the finder upon release of the fix, with a standard **90-day maximum** embargo. |
-
-### Credit and Acknowledgement
-Security researchers who responsibly disclose vulnerabilities in OnionSec will be credited in the GitHub Security Advisory release notes and project changelog (unless anonymity is requested).
+To help us assess and resolve the issue quickly, please include:
+- A description of the vulnerability and its potential impact.
+- Clear steps to reproduce or a minimal proof of concept (PoC).
+- Any details regarding affected platforms, Go runtime versions, or environment configurations.
+- Any suggested mitigations or patches if available.
 
 ---
 
-## 4. Scope and Exclusions
+## Response & Disclosure SLAs
 
-### In Scope
-- Vulnerabilities within the OnionSec codebase itself:
-  - `cmd/onionsec` (CLI application)
-  - `cmd/onionsecd` (HTTP API daemon)
-  - `internal/` (crawler engine, storage, correlation, diffing, analyzers)
-  - `web/` (React/Next.js dashboard)
-- Denial-of-service vulnerabilities caused by malicious HTML/JS target inputs exhausting memory or CPU beyond configured limits.
-- Bypasses of crawler safety rules (such as same-origin escapes or unredacted credential leaks into logs or persistent storage).
+We are committed to handling security vulnerabilities responsibly:
 
-### Out of Scope
-- Security vulnerabilities in scanned third-party Tor hidden services. (OnionSec is an authorized security scanner; findings identified on external target onions belong to those service operators).
-- Attacks requiring physical access to the auditor's local machine or root compromise of the host running `onionsecd`.
-- Denial-of-service attacks directed against public Tor relays or the Tor network itself.
-- Social engineering attacks targeting project maintainers.
+- **Initial Acknowledgment:** Within **48 hours** of receiving the report.
+- **Triage & Assessment:** Within **5 business days**, confirming severity and reproducibility.
+- **Remediation & Patching:** Maintainers will coordinate an appropriate release and CVE assignment (if applicable) prior to public disclosure.
+- **Coordinated Disclosure:** We request that reporters adhere to standard coordinated vulnerability disclosure practices, allowing time for a fix to be published before public disclosure.
+
+---
+
+## Threat Model & Scope
+
+### In-Scope Vulnerabilities
+
+Vulnerabilities within the OnionSec scanner codebase and its runtime behavior are considered in-scope, including:
+
+- **Remote Code Execution (RCE):** Execution of code or arbitrary commands on the scanner host triggered by parsing target responses, headers, or metadata.
+- **Tor Isolation & Clearnet Leaks:** Bypasses in the Tor client or crawler resulting in unrouted clearnet DNS requests, HTTP connections, or socket leaks during onion scans.
+- **Crawler Boundary Bypasses:** Circumvention of same-origin constraints, resource boundaries, or loop protections leading to unauthorized host access or SSRF.
+- **Sensitive Data & Credential Exposure:** Scanner reports inadvertently leaking unredacted secrets or system credentials from the scanning host.
+- **Parser Flaws & Denial of Service on Scanner:** Memory exhaustion, infinite loops, or unhandled panics within core parsers when processing maliciously crafted responses.
+
+### Out-of-Scope Issues
+
+The following areas are explicitly outside the scope of OnionSec's security model:
+
+- Vulnerabilities or security flaws present in the remote target website or service being scanned.
+- Denial-of-service (DoS) attacks directed against target onion services.
+- Flaws, outages, or sybil attacks in the upstream Tor network infrastructure itself.
+- Attacks requiring physical access or root compromise of the host running the scan.
+- Social engineering attacks targeting maintainers or users.
+
+---
+
+## Safety Rules for Development
+
+All contributions must adhere to the non-negotiable safety rules outlined in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md):
+
+- **Never execute target JavaScript** on the scanner host.
+- **Bound every crawl** (depth, pages, body sizes, and timeouts).
+- **Same-origin crawl only.**
+- **Redact detected credentials** in scan reports.
+- **Explicit target authorization:** Only scan targets explicitly supplied by the user.

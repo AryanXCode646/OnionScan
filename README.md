@@ -111,6 +111,10 @@ pieces of work. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to add a
 new analyzer or rule, and the [open issues](../../issues) to find one to
 work on.
 
+## Security
+
+Please report vulnerabilities privately via our security process. See [`SECURITY.md`](SECURITY.md) for supported versions, disclosure expectations, and our scanner threat model.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
